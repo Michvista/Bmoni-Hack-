@@ -4,6 +4,7 @@
 	import { apiClient } from '$lib/api/client';
 	import { fetchTransactionById, fetchTransactionEvents, updateTransactionAgreement, uploadTransactionEvidence } from '$lib/api/transactions';
 	import { submitReport } from '$lib/api/reports';
+	import { submitTransactionReview } from '$lib/api/vendors';
 	import { authStore } from '$lib/stores/authStore';
 	import { toast } from '$lib/stores/notificationStore';
 	import TransactionStatusStepper from '$lib/components/transactions/TransactionStatusStepper.svelte';
@@ -48,6 +49,8 @@
 	let isDisputeModalOpen = $state(false);
 	let disputeReason = $state('Delay / Unapproved scope change');
 	let disputeDetails = $state('');
+	let reviewRating = $state(5);
+	let reviewComment = $state('');
 
 	async function handleAcceptAgreement() {
 		if (!transaction || !$currentUser || !isBuyer) return;
@@ -90,6 +93,15 @@
 	async function handleConfirmCompletion() {
 		if (!transaction || !$currentUser || !isBuyer) return;
 		await runAction(() => updateTransactionAgreement(transaction!.id, { status: 'completed', details: 'Buyer confirmed completion.' }), 'Transaction Completed', 'Completion was recorded.');
+	}
+
+	async function handleSubmitReview(event: SubmitEvent) {
+		event.preventDefault();
+		if (!transaction || !isBuyer || transaction.status !== 'completed' || transaction.review_submitted) return;
+		await runAction(async () => {
+			await submitTransactionReview(transaction!.id, reviewRating, reviewComment.trim());
+			await refresh();
+		}, 'Review submitted', 'Your verified transaction review was recorded.');
 	}
 
 	async function handleRaiseDispute(e: SubmitEvent) {
@@ -191,6 +203,27 @@
 				</div>
 			</div>
 		</div>
+
+		{#if transaction.status === 'completed' && isBuyer}
+			<section class="rounded-3xl border border-slate-200 bg-white p-6 space-y-4" aria-labelledby="review-heading">
+				<h2 id="review-heading" class="text-lg font-bold">Your provider review</h2>
+				{#if transaction.review_submitted}
+					<p class="text-sm text-emerald-800">You have submitted a verified review for this completed agreement.</p>
+				{:else}
+					<form class="grid gap-3 max-w-2xl" onsubmit={handleSubmitReview}>
+						<label class="text-sm font-medium">Rating
+							<select bind:value={reviewRating} class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2" aria-label="Rating" required>
+								<option value={5}>5 — Excellent</option><option value={4}>4 — Good</option><option value={3}>3 — Okay</option><option value={2}>2 — Poor</option><option value={1}>1 — Very poor</option>
+							</select>
+						</label>
+						<label class="text-sm font-medium">Review
+							<textarea bind:value={reviewComment} minlength="5" maxlength="1000" rows="3" required class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2" placeholder="Share useful feedback about the completed service."></textarea>
+						</label>
+						<div><Button type="submit" variant="primary" size="sm" loading={busy} disabled={!apiClient.backendConfigured || busy}>Submit verified review</Button></div>
+					</form>
+				{/if}
+			</section>
+		{/if}
 
 		<!-- Grid Layout: Agreement Details & Milestones vs Audit Trail -->
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -326,7 +359,7 @@
 							<p class="text-xs text-slate-500">Inspection photos uploaded for buyer review</p>
 						</div>
 
-						{#if transaction.status === 'in_progress' || transaction.status === 'awaiting_confirmation'}
+						{#if isVendor && (transaction.status === 'in_progress' || transaction.status === 'awaiting_confirmation')}
 							<Button variant="outline" size="sm" onclick={() => (isEvidenceModalOpen = true)}>
 								<IconPlus size={14} />
 								<span>Add Photo Proof</span>

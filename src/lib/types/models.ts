@@ -157,6 +157,7 @@ export interface Transaction {
 	created_at: string;
 	updated_at: string;
 	vendor?: VendorProfile;
+	review_submitted?: boolean;
 }
 
 export interface TransactionEvent {

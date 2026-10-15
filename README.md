@@ -22,13 +22,14 @@ Payment status in the UI is informational and comes from the backend. AKOKA does
 | Observation submission | Form validates and submits to the API; there is no local fallback or fake receipt image | Requires authenticated `POST /price-observations`; receipt attachment for a price observation needs a secure upload contract |
 | Sign-in, registration, sign-out | Pages and API client calls exist; admin is not self-registerable | Backend must implement cookie/session auth routes and return the documented user shape |
 | Role-aware student, vendor, admin layouts | Routes are separated and client-side role gates are present | This is navigation/UI gating only; backend must enforce permissions on every protected endpoint |
-| Student and vendor portal pages | Pages load account data through API services | Vendor account must be linked to a vendor profile and the API must scope results to the signed-in user |
+| Student and vendor portal pages | Pages load account data through API services; vendors can create and edit their listings | Vendor account must be linked to a vendor profile and the API must scope results to the signed-in user |
 | Agreements, milestones, evidence, disputes | Forms/actions call the API; there is no local fallback | Backend must implement authorized agreement, milestone, evidence, event, and report endpoints and enforce valid state transitions |
 | Payment checkout | Checkout handoff/status client exists at `/payments/checkout` and `/payments/:id`; only the signed-in buyer can start it in the UI | These endpoints are contracts for the AKOKA backend, not BMONI calls. Backend must validate the buyer/agreement, create provider checkout, verify callbacks/webhooks, and return status. No provider secret belongs in this app. |
+| Transaction-verified reviews | Buyer can submit a 1–5 rating and comment after a completed transaction | Backend must enforce completed-transaction eligibility, one review per transaction, and return `review_submitted` on transaction reads |
 | Admin moderation | Queue and moderation controls call the API | Backend must provide admin-authenticated moderation queue and mutation endpoints and enforce admin permissions |
 | Toasts and form feedback | Existing forms show validation, success, and error messages | Server validation and stable error response format are required for connected mode |
 
-The frontend contains no seeded catalog or transaction data and does not fall back to local writes. When `PUBLIC_API_BASE_URL` is unset, API requests fail with a clear configuration error and the UI shows an error or empty state; real data and successful mutations require the backend. This prevents unconnected activity from appearing as live product data. Sign-in, registration, payment, and secure evidence upload require the backend routes below.
+The frontend contains no seeded catalog or transaction data and does not fall back to local writes. When `PUBLIC_API_BASE_URL` is unset, API requests fail with a clear configuration error and the UI shows an error or empty state; real data and successful mutations require the backend. Sign-in, registration, payment, and secure evidence upload require the backend routes below. The payment screen is intended for the real fintech checkout flow through the AKOKA backend; payment completion must be confirmed by the backend after provider verification, never by a browser redirect alone.
 
 ## Routes and access
 
@@ -41,7 +42,7 @@ The frontend contains no seeded catalog or transaction data and does not fall ba
 | `/transactions`, `/transactions/:id` | Signed-in student/vendor |
 | `/admin` | Admin/moderator |
 
-The `RequireRole` component improves the frontend experience but is not a security boundary. The backend must authorize users and records independently.
+The `RequireRole` component improves the frontend experience but is not a security boundary. The backend must authorize users and records independently. `GET /transactions` must return only records the authenticated user may access (or enforce equivalent server-side scoping); client-side filtering is not access control.
 
 ## Backend API contract to agree
 
@@ -56,8 +57,11 @@ POST   /auth/logout
 GET    /categories
 GET    /listings                     ?category=&area=&maxPrice=&search=
 GET    /listings/:id
+POST   /listings                    vendor session creates listing
+PATCH  /listings/:id                owning vendor edits listing
 GET    /vendors
 GET    /vendors/:id
+GET    /vendors/:id/reviews
 GET    /price-insights               ?category=&itemSpec=
 GET    /price-observations            ?category=
 POST   /price-observations
@@ -70,6 +74,7 @@ GET    /transactions/:id/events
 POST   /transactions/:id/events
 PATCH  /transactions/:id/milestones/:milestoneId
 POST   /transactions/:id/evidence    multipart form: file, title
+POST   /transactions/:id/review      { rating, comment }; buyer only, completed transaction only
 
 GET    /admin/moderation-queue
 PATCH  /admin/moderation-queue/observation/:id
@@ -79,7 +84,7 @@ POST   /payments/checkout             { transaction_id, return_url }
 GET    /payments/:paymentId
 ```
 
-These are the current frontend endpoint assumptions; confirm and adapt them with the backend developer. Responses are expected as raw JSON objects/arrays, not `{ data: ... }` envelopes. `GET /vendors/:id` returns `{ vendor, listings, reviews }`. The moderation queue returns `{ pendingObservations, reports, pendingTransactions, verifiedObservationCount? }`. Transaction responses include the vendor account owner ID as `vendor.user_id` so the interface can show party-specific actions. The frontend sends evidence as multipart form data. The backend must derive buyer/reporter/actor identity from the authenticated session rather than trusting IDs supplied by the browser, and verify provider webhooks/callbacks before marking payment successful. Never trust a browser redirect as proof of payment.
+These are the current frontend endpoint assumptions; confirm and adapt them with the backend developer. Responses are expected as raw JSON objects/arrays, not `{ data: ... }` envelopes. `GET /vendors/:id` returns `{ vendor, listings, reviews }`. The moderation queue returns `{ pendingObservations, reports, pendingTransactions, verifiedObservationCount? }`. Transaction responses include the vendor account owner ID as `vendor.user_id` and buyer-specific `review_submitted` state. The frontend sends evidence as multipart form data. The backend must derive buyer/reporter/actor/vendor identity from the authenticated session rather than trusting IDs supplied by the browser, scope reads, enforce listing ownership and review eligibility, and verify provider webhooks/callbacks before marking payment successful. Never trust a browser redirect as proof of payment.
 
 ## Local setup
 
@@ -111,4 +116,4 @@ src/routes/              SvelteKit pages
 
 ## Validation
 
-Run `npm run check` and `npm run build` before handoff. The project currently reports an existing SvelteKit config warning about the deprecated `config.alias` and TypeScript path validation; see the command output and resolve those with the repository config cleanup before release.
+Run `npm run check` and `npm run build` before handoff. The project reports zero Svelte/TypeScript diagnostics; SvelteKit still emits configuration notices about the legacy alias setup.

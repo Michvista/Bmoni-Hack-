@@ -16,3 +16,7 @@ export async function fetchVendorReviews(id: string): Promise<Review[]> {
 }
 
 export const fetchVendor = (id: string) => apiClient.get<VendorDetails>(`/vendors/${encodeURIComponent(id)}`);
+
+export function submitTransactionReview(transactionId: string, rating: number, comment: string): Promise<Review> {
+	return apiClient.post<Review>(`/transactions/${encodeURIComponent(transactionId)}/review`, { rating, comment });
+}
