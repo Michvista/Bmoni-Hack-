@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { apiClient } from '$lib/api/client';
+	import { fetchTransactionById, fetchTransactionEvents, updateTransactionAgreement, uploadTransactionEvidence } from '$lib/api/transactions';
+	import { submitReport } from '$lib/api/reports';
 	import { authStore } from '$lib/stores/authStore';
 	import { toast } from '$lib/stores/notificationStore';
 	import TransactionStatusStepper from '$lib/components/transactions/TransactionStatusStepper.svelte';
 	import EventAuditTimeline from '$lib/components/transactions/EventAuditTimeline.svelte';
-	import SimulatedPaymentNotice from '$lib/components/ui/SimulatedPaymentNotice.svelte';
+	import PaymentCheckout from '$lib/components/transactions/PaymentCheckout.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import {
-		IconLock,
 		IconCheckmark,
 		IconClock,
 		IconAlertCircle,
@@ -19,119 +21,84 @@
 		IconFlag,
 		IconPlus
 	} from '$lib/components/icons';
-	import type { TransactionMilestone } from '$lib/types/models';
+	import type { Transaction, TransactionEvent, TransactionMilestone } from '$lib/types/models';
 
 	const txId = page.params.id || '';
 	const currentUser = authStore;
 
-	const transaction = $derived(dbStore.getTransactionById(txId));
-	const events = $derived(dbStore.getTransactionEvents(txId));
+	let transaction = $state<Transaction | undefined>();
+	let events = $state<TransactionEvent[]>([]);
+	let pageError = $state('');
+	let busy = $state(false);
+	async function refresh() {
+		const [nextTransaction, nextEvents] = await Promise.all([fetchTransactionById(txId), fetchTransactionEvents(txId)]);
+		transaction = nextTransaction;
+		events = nextEvents;
+	}
+	onMount(() => { refresh().catch((error) => pageError = error instanceof Error ? error.message : 'Could not load agreement.'); });
+	const isBuyer = $derived(Boolean(transaction && $currentUser?.id === transaction.buyer_id && $currentUser?.role === 'student'));
+	const isVendor = $derived(Boolean(transaction && $currentUser?.role === 'vendor' && $currentUser?.id === transaction.vendor?.user_id));
 
 	// Evidence upload modal state
 	let isEvidenceModalOpen = $state(false);
 	let evidenceTitle = $state('Completed Thesis Print Inspection Photo');
-	let evidenceUrl = $state('https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80');
+	let evidenceFile = $state<File | undefined>();
 
 	// Dispute modal state
 	let isDisputeModalOpen = $state(false);
 	let disputeReason = $state('Delay / Unapproved scope change');
 	let disputeDetails = $state('');
 
-	function handleAcceptAgreement() {
-		if (!transaction) return;
-		dbStore.updateTransactionStatus(
-			transaction.id,
-			'agreed',
-			{ id: $currentUser.id, name: $currentUser.display_name, role: $currentUser.role },
-			`${$currentUser.display_name} (${$currentUser.role}) formally accepted the agreed scope and price.`
-		);
-		toast.show({
-			title: 'Agreement Signed',
-			message: 'Terms are now locked. Simulated payment authorized.',
-			type: 'success'
-		});
+	async function handleAcceptAgreement() {
+		if (!transaction || !$currentUser || !isBuyer) return;
+		await runAction(async () => updateTransactionAgreement(transaction!.id, { status: 'agreed', details: 'Buyer accepted the agreed scope and price.' }), 'Agreement Signed', 'Agreement terms were recorded.');
 	}
 
-	function handleStartWork() {
-		if (!transaction) return;
-		dbStore.updateTransactionStatus(
-			transaction.id,
-			'in_progress',
-			{ id: $currentUser.id, name: $currentUser.display_name, role: $currentUser.role },
-			`Provider commenced active work execution.`
-		);
-		toast.show({
-			title: 'Work Commenced',
-			message: 'Job status moved to In Progress.',
-			type: 'info'
-		});
+	async function handleStartWork() {
+		if (!transaction || !$currentUser || !isVendor) return;
+		await runAction(async () => updateTransactionAgreement(transaction!.id, { status: 'in_progress', details: 'Provider commenced work.' }), 'Work Commenced', 'Job status moved to In Progress.');
 	}
 
-	function handleToggleMilestone(milestoneId: string) {
-		if (!transaction) return;
-		dbStore.toggleMilestone(transaction.id, milestoneId);
-		toast.show({
-			title: 'Milestone Updated',
-			message: 'Milestone checkpoint state toggled.',
-			type: 'info'
-		});
+	async function handleToggleMilestone(milestoneId: string) {
+		if (!transaction || !isVendor) return;
+		await runAction(async () => { await apiClient.patch(`/transactions/${encodeURIComponent(transaction!.id)}/milestones/${encodeURIComponent(milestoneId)}`, {}); await refresh(); }, 'Milestone Updated', 'Milestone progress was saved.');
 	}
 
-	function handleUploadEvidence(e: SubmitEvent) {
+	async function runAction(action: () => Promise<unknown>, title: string, message: string) {
+		if (busy) return;
+		busy = true;
+		try { await action(); await refresh(); toast.show({ title, message, type: 'success' }); }
+		catch (error) { toast.show({ title: 'Action failed', message: error instanceof Error ? error.message : 'The backend could not save this action.', type: 'error' }); }
+		finally { busy = false; }
+	}
+
+	async function handleUploadEvidence(e: SubmitEvent) {
 		e.preventDefault();
-		if (!transaction) return;
-		dbStore.addEvidence(transaction.id, evidenceTitle, evidenceUrl, $currentUser.display_name);
-		dbStore.updateTransactionStatus(
-			transaction.id,
-			'awaiting_confirmation',
-			{ id: $currentUser.id, name: $currentUser.display_name, role: $currentUser.role },
-			`Deliverable evidence attached ("${evidenceTitle}"). Marked ready for student inspection.`
-		);
-		toast.show({
-			title: 'Evidence Submitted',
-			message: 'Proof attached and transaction marked for buyer confirmation.',
-			type: 'success'
-		});
+		if (!transaction || !$currentUser || !isVendor || !evidenceFile) return;
+		if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(evidenceFile.type) || evidenceFile.size > 10 * 1024 * 1024) {
+			toast.show({ title: 'Unsupported evidence file', message: 'Choose a JPG, PNG, WebP, or PDF file up to 10 MB.', type: 'error' });
+			return;
+		}
+		await runAction(async () => {
+			await uploadTransactionEvidence(transaction!.id, evidenceFile!, evidenceTitle);
+			await updateTransactionAgreement(transaction!.id, { status: 'awaiting_confirmation', details: `Deliverable submitted: ${evidenceTitle}` });
+		}, 'Evidence Submitted', 'Evidence was sent to the agreement record.');
 		isEvidenceModalOpen = false;
+		evidenceFile = undefined;
 	}
 
-	function handleConfirmCompletion() {
-		if (!transaction) return;
-		dbStore.updateTransactionStatus(
-			transaction.id,
-			'completed',
-			{ id: $currentUser.id, name: $currentUser.display_name, role: $currentUser.role },
-			`Buyer (${$currentUser.display_name}) confirmed physical collection & satisfaction. Simulated payment released.`
-		);
-		toast.show({
-			title: 'Transaction Completed!',
-			message: 'Both parties signed off. Simulated escrow funds released to provider.',
-			type: 'success'
-		});
+	async function handleConfirmCompletion() {
+		if (!transaction || !$currentUser || !isBuyer) return;
+		await runAction(() => updateTransactionAgreement(transaction!.id, { status: 'completed', details: 'Buyer confirmed completion.' }), 'Transaction Completed', 'Completion was recorded.');
 	}
 
-	function handleRaiseDispute(e: SubmitEvent) {
+	async function handleRaiseDispute(e: SubmitEvent) {
 		e.preventDefault();
-		if (!transaction) return;
-		dbStore.updateTransactionStatus(
-			transaction.id,
-			'disputed',
-			{ id: $currentUser.id, name: $currentUser.display_name, role: $currentUser.role },
-			`Dispute raised by ${$currentUser.display_name}: "${disputeReason} - ${disputeDetails}"`
-		);
-		dbStore.addReport({
-			reporter_id: $currentUser.id,
-			reporter_name: $currentUser.display_name,
-			target_type: 'transaction',
-			target_id: transaction.id,
-			reason: disputeReason,
-			details: disputeDetails || 'Flagged for moderation on the Trust Desk.'
-		});
-		toast.show({
-			title: 'Dispute Flagged',
-			message: 'Transaction held in dispute. Routed to Trust Desk for campus moderation.',
-			type: 'warning'
-		});
+		if (!transaction || !$currentUser) return;
+		await runAction(async () => {
+			await submitReport({ target_type: 'transaction', target_id: transaction!.id, reason: disputeReason, details: disputeDetails });
+			await updateTransactionAgreement(transaction!.id, { status: 'disputed', details: `Issue reported: ${disputeReason}` });
+		}, 'Issue Reported', 'Your report was sent for review.');
 		isDisputeModalOpen = false;
 	}
 </script>
@@ -141,6 +108,7 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+	{#if pageError}<div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{pageError}</div>{/if}
 	{#if !transaction}
 		<div class="py-16 text-center space-y-4">
 			<IconAlertCircle size={32} class="text-rose-500 mx-auto" />
@@ -177,71 +145,44 @@
 			<!-- Status Stepper Sequence (Section 8) -->
 			<TransactionStatusStepper status={transaction.status} />
 
-			<!-- Simulated Payment Status Box (Section 8 & 11) -->
-			<div class="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-				<div class="flex items-start gap-3">
-					<div class="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0 mt-0.5">
-						<IconLock size={18} />
-					</div>
-					<div>
-						<div class="flex items-center gap-2">
-							<span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-200 text-amber-900">
-								Simulated Escrow State
-							</span>
-							<span class="text-xs font-bold text-amber-950 capitalize">
-								{transaction.simulated_payment.status.replace('_', ' ')}
-							</span>
-						</div>
-						<p class="text-xs text-amber-900 mt-1 leading-relaxed">
-							{transaction.simulated_payment.disclaimer}
-						</p>
-					</div>
-				</div>
-
-				<div class="shrink-0 text-right">
-					<div class="text-[11px] font-mono text-amber-800">
-						Amount: <strong>₦{transaction.simulated_payment.amount.toLocaleString()}</strong>
-					</div>
-					<div class="text-[10px] text-amber-600 italic">No banking API connected</div>
-				</div>
-			</div>
+		<PaymentCheckout {transaction} />
 
 			<!-- Interactive Step Transition Action Bar -->
 			<div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
 				<div class="text-xs text-slate-500">
-					Acting persona: <strong class="text-slate-800">{$currentUser.display_name} ({$currentUser.role})</strong>
+					Signed in as: <strong class="text-slate-800">{$currentUser?.display_name ?? 'Unknown user'} ({$currentUser?.role ?? 'signed out'})</strong>
 				</div>
 
 				<div class="flex flex-wrap items-center gap-2">
-					{#if transaction.status === 'awaiting_agreement'}
+					{#if transaction.status === 'awaiting_agreement' && isBuyer}
 						<Button variant="primary" size="sm" onclick={handleAcceptAgreement}>
 							<IconCheckmark size={14} />
 							<span>Sign & Accept Terms</span>
 						</Button>
 					{/if}
 
-					{#if transaction.status === 'agreed'}
+					{#if transaction.status === 'agreed' && isVendor}
 						<Button variant="primary" size="sm" onclick={handleStartWork}>
 							<IconClock size={14} />
 							<span>Commence Work Execution</span>
 						</Button>
 					{/if}
 
-					{#if transaction.status === 'in_progress'}
+					{#if transaction.status === 'in_progress' && isVendor}
 						<Button variant="outline" size="sm" onclick={() => (isEvidenceModalOpen = true)}>
 							<IconReceipt size={14} />
 							<span>Submit Deliverable Proof</span>
 						</Button>
 					{/if}
 
-					{#if transaction.status === 'awaiting_confirmation'}
+					{#if transaction.status === 'awaiting_confirmation' && isBuyer}
 						<Button variant="success" size="sm" onclick={handleConfirmCompletion}>
 							<IconCheckmark size={14} />
-							<span>Confirm Satisfaction & Release Funds</span>
+							<span>Confirm Completion</span>
 						</Button>
 					{/if}
 
-					{#if transaction.status !== 'completed' && transaction.status !== 'disputed'}
+					{#if (isBuyer || isVendor) && transaction.status !== 'completed' && transaction.status !== 'disputed'}
 						<Button variant="ghost" size="sm" class="text-rose-600 hover:text-rose-700 hover:bg-rose-50" onclick={() => (isDisputeModalOpen = true)}>
 							<IconFlag size={14} />
 							<span>Flag Issue / Dispute</span>
@@ -328,7 +269,7 @@
 							<h3 class="text-sm font-bold uppercase tracking-wider text-slate-900">
 								Milestone Checkpoints
 							</h3>
-							<p class="text-xs text-slate-500">Click to toggle progress during the live demo</p>
+				<p class="text-xs text-slate-500">Record progress against the agreed milestones.</p>
 						</div>
 						<span class="text-xs font-mono text-slate-400">
 							{transaction.milestones.filter((m: TransactionMilestone) => m.completed).length}/{transaction.milestones.length} Done
@@ -341,8 +282,9 @@
 								type="button"
 								onclick={() => handleToggleMilestone(milestone.id)}
 								class="w-full text-left p-3.5 rounded-xl border transition-all flex items-start gap-3 cursor-pointer {milestone.completed
-									? 'bg-emerald-50/70 border-emerald-200 text-slate-900'
+								? 'bg-emerald-50/70 border-emerald-200 text-slate-900'
 									: 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'}"
+								disabled={!isVendor || busy}
 							>
 								<div
 									class="w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors {milestone.completed
@@ -449,24 +391,24 @@
 		</div>
 
 		<div>
-			<label for="ev-url" class="block text-xs font-semibold text-slate-700 mb-1">
-				Inspection Image URL / Photo
+			<label for="ev-file" class="block text-xs font-semibold text-slate-700 mb-1">
+				Evidence file (JPG, PNG, WebP, or PDF; max 10 MB)
 			</label>
 			<input
-				id="ev-url"
-				type="url"
-				bind:value={evidenceUrl}
+				id="ev-file"
+				type="file"
+				accept="image/jpeg,image/png,image/webp,application/pdf"
+				onchange={(event) => evidenceFile = event.currentTarget.files?.[0]}
 				class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-akoka-500"
 				required
 			/>
-			<div class="mt-2 rounded-xl overflow-hidden border border-slate-200">
-				<img src={evidenceUrl} alt="Preview" class="w-full h-32 object-cover" />
-			</div>
+			{#if evidenceFile}<p class="mt-2 text-xs text-slate-500">Selected: {evidenceFile.name}</p>{/if}
+			{#if !apiClient.backendConfigured}<p class="mt-2 text-xs text-amber-800">Connect the AKOKA backend to securely upload evidence.</p>{/if}
 		</div>
 
 		<div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
 			<Button variant="outline" size="md" onclick={() => (isEvidenceModalOpen = false)}>Cancel</Button>
-			<Button variant="primary" size="md" type="submit">Submit & Request Sign-off</Button>
+			<Button variant="primary" size="md" type="submit" loading={busy} disabled={!apiClient.backendConfigured}>Submit & Request Sign-off</Button>
 		</div>
 	</form>
 </Modal>

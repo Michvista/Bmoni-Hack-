@@ -1,27 +1,18 @@
 import { apiClient } from './client';
-import { dbStore } from '../stores/mockDatabase';
-import type { VendorProfile, Review } from '../types/models';
+import type { VendorProfile, Review, Listing } from '../types/models';
+
+export interface VendorDetails { vendor: VendorProfile; listings: Listing[]; reviews: Review[] }
 
 export async function fetchVendors(): Promise<VendorProfile[]> {
-	try {
-		return await apiClient.get<VendorProfile[]>('/vendors');
-	} catch {
-		return dbStore.getVendors();
-	}
+	return apiClient.get<VendorProfile[]>('/vendors');
 }
 
 export async function fetchVendorById(id: string): Promise<VendorProfile | undefined> {
-	try {
-		return await apiClient.get<VendorProfile>(`/vendors/${id}`);
-	} catch {
-		return dbStore.getVendorById(id);
-	}
+	return apiClient.get<VendorProfile>(`/vendors/${encodeURIComponent(id)}`);
 }
 
 export async function fetchVendorReviews(id: string): Promise<Review[]> {
-	try {
-		return await apiClient.get<Review[]>(`/vendors/${id}/reviews`);
-	} catch {
-		return dbStore.getReviewsForVendor(id);
-	}
+	return apiClient.get<Review[]>(`/vendors/${encodeURIComponent(id)}/reviews`);
 }
+
+export const fetchVendor = (id: string) => apiClient.get<VendorDetails>(`/vendors/${encodeURIComponent(id)}`);

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { fetchListings } from '$lib/api/listings';
+	import { fetchCategories } from '$lib/api/categories';
+	import { apiClient } from '$lib/api/client';
 	import { UNILAG_CAMPUS_ZONES } from '$lib/data/campusZones';
 	import ListingCard from '$lib/components/listings/ListingCard.svelte';
 	import CreateTransactionModal from '$lib/components/transactions/CreateTransactionModal.svelte';
@@ -8,7 +11,10 @@
 	import { IconSearch, IconFilter, IconStore, IconSliders } from '$lib/components/icons';
 	import type { Listing } from '$lib/types/models';
 
-	const categories = dbStore.getCategories();
+	let categories = $state<import('$lib/types/models').Category[]>([]);
+	let listings = $state<Listing[]>([]);
+	let loading = $state(true);
+	let loadError = $state('');
 
 	let searchQuery = $state('');
 	let selectedCategory = $state('all');
@@ -18,13 +24,19 @@
 	let selectedListingForTx = $state<Listing | undefined>(undefined);
 	let isTxModalOpen = $state(false);
 
-	const filteredListings = $derived.by(() => {
-		return dbStore.getListings({
+	const filteredListings = $derived(listings);
+	onMount(() => { fetchCategories().then((result) => categories = result).catch((error) => loadError = error.message); });
+	$effect(() => {
+		const filters = {
 			category: selectedCategory !== 'all' ? selectedCategory : undefined,
 			area: selectedZone !== 'all' ? selectedZone : undefined,
 			maxPrice: maxPrice ? Number(maxPrice) : undefined,
 			search: searchQuery.trim() || undefined
-		});
+		};
+		let cancelled = false;
+		loading = true;
+		fetchListings(filters).then((result) => { if (!cancelled) { listings = result; loadError = ''; } }).catch((error) => { if (!cancelled) loadError = error instanceof Error ? error.message : 'Could not load listings.'; }).finally(() => { if (!cancelled) loading = false; });
+		return () => { cancelled = true; };
 	});
 
 	function handleStartTransaction(listing: Listing) {
@@ -118,6 +130,7 @@
 		</div>
 	</div>
 
+	{#if loadError}<div role="alert" class="rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-800">{loadError}{#if !apiClient.backendConfigured} Configure the AKOKA backend URL to load live listings.{/if}</div>{/if}
 	<!-- Listings Count -->
 	<div class="flex items-center justify-between text-xs text-slate-500">
 		<span>Showing <strong>{filteredListings.length}</strong> active campus offerings</span>
@@ -138,7 +151,8 @@
 	</div>
 
 	<!-- Listings Grid -->
-	{#if filteredListings.length === 0}
+	{#if loading}<div class="py-16 text-center rounded-2xl bg-white border border-slate-200 text-sm text-slate-500">Loading campus listings…</div>
+	{:else if filteredListings.length === 0}
 		<div class="py-16 text-center p-8 rounded-2xl bg-white border border-slate-200 space-y-3">
 			<IconStore size={32} class="text-slate-400 mx-auto" />
 			<h3 class="text-sm font-bold text-slate-800">No Services Found</h3>

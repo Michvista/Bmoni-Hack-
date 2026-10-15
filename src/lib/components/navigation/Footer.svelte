@@ -45,17 +45,12 @@
 				</ul>
 			</div>
 
-			<!-- Col 4: Trust & Compliance Guardrails (Section 11) -->
+			<!-- Col 4: Trust & Compliance Guardrails -->
 			<div class="space-y-2.5">
-				<h5 class="text-white font-semibold text-xs uppercase tracking-wider">Demo Disclaimers</h5>
+				<h5 class="text-white font-semibold text-xs uppercase tracking-wider">Payments</h5>
 				<div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-[11px] leading-relaxed">
-					<div class="flex items-center gap-1.5 font-semibold text-amber-400">
-						<IconLock size={13} />
-						<span>Simulated Payment MVP</span>
-					</div>
-					<p class="text-slate-400">
-						Payment flows in this hackathon prototype are simulated. AKOKA does not hold customer funds or claim to operate a regulated financial escrow service.
-					</p>
+					<div class="flex items-center gap-1.5 font-semibold text-sky-300"><IconLock size={13} /><span>Backend-managed checkout</span></div>
+					<p class="text-slate-400">Payment status is confirmed by the connected backend and its fintech provider.</p>
 				</div>
 			</div>
 		</div>

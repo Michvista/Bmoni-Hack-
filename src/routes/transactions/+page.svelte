@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { fetchTransactions } from '$lib/api/transactions';
+	import { apiClient } from '$lib/api/client';
 	import { authStore } from '$lib/stores/authStore';
 	import CreateTransactionModal from '$lib/components/transactions/CreateTransactionModal.svelte';
-	import SimulatedPaymentNotice from '$lib/components/ui/SimulatedPaymentNotice.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import {
 		IconFileText,
@@ -10,20 +11,22 @@
 		IconClock,
 		IconAlertCircle,
 		IconPlus,
-		IconArrowRight,
-		IconLock
+		IconArrowRight
 	} from '$lib/components/icons';
 	import type { Transaction, TransactionStatus } from '$lib/types/models';
 
 	const currentUser = authStore;
+	let allTransactions = $state<Transaction[]>([]);
+	let loading = $state(true);
+	let loadError = $state('');
+	onMount(() => { fetchTransactions().then((result) => { allTransactions = result; }).catch((error) => loadError = error instanceof Error ? error.message : 'Could not load agreements.').finally(() => loading = false); });
 	let statusFilter = $state<string>('all');
 	let isCreateModalOpen = $state(false);
 
-	const allTransactions = $derived(dbStore.getTransactions());
-
 	const filteredTransactions = $derived.by(() => {
-		if (statusFilter === 'all') return allTransactions;
-		return allTransactions.filter((t: Transaction) => t.status === statusFilter);
+		const visible = allTransactions.filter((t) => $currentUser?.role === 'admin' || ($currentUser?.role === 'student' ? t.buyer_id === $currentUser.id : t.vendor?.user_id === $currentUser?.id));
+		if (statusFilter === 'all') return visible;
+		return visible.filter((t: Transaction) => t.status === statusFilter);
 	});
 
 	function getStatusBadge(status: TransactionStatus): { label: string; class: string } {
@@ -70,15 +73,13 @@
 			</p>
 		</div>
 
-		<Button variant="primary" size="md" onclick={() => (isCreateModalOpen = true)}>
+		{#if $currentUser?.role === 'student'}<Button variant="primary" size="md" onclick={() => (isCreateModalOpen = true)}>
 			<IconPlus size={16} />
 			<span>Draft New Agreement</span>
-		</Button>
+		</Button>{/if}
 	</div>
 
-	<!-- Demo Notice Banner -->
-	<SimulatedPaymentNotice />
-
+	{#if loadError}<div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}{#if !apiClient.backendConfigured} Configure the AKOKA backend URL to load agreements.{/if}</div>{/if}
 	<!-- Filter Tabs -->
 	<div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
 		{#each [{ id: 'all', label: 'All Agreements' }, { id: 'awaiting_agreement', label: 'Awaiting Agreement' }, { id: 'in_progress', label: 'In Progress' }, { id: 'awaiting_confirmation', label: 'Awaiting Sign-off' }, { id: 'completed', label: 'Completed' }, { id: 'disputed', label: 'Disputed' }] as tab}
@@ -96,7 +97,8 @@
 	</div>
 
 	<!-- Transactions Table / Cards List -->
-	{#if filteredTransactions.length === 0}
+	{#if loading}<div class="py-16 text-center rounded-2xl bg-white border border-slate-200 text-sm text-slate-500">Loading agreements…</div>
+	{:else if filteredTransactions.length === 0}
 		<div class="py-16 text-center p-8 rounded-2xl bg-white border border-slate-200 space-y-3">
 			<IconFileText size={32} class="text-slate-400 mx-auto" />
 			<h3 class="text-sm font-bold text-slate-800">No Documented Agreements Found</h3>

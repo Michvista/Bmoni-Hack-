@@ -72,6 +72,7 @@ export type ObservationVerificationStatus = 'pending' | 'verified' | 'flagged' |
 
 export interface PriceObservation {
 	id: string;
+	reporter_id?: string;
 	category_id: string;
 	item_specification: string;
 	amount: number;
@@ -86,7 +87,6 @@ export interface PriceObservation {
 	vendor_name?: string;
 	receipt_image_url?: string;
 	notes?: string;
-	is_demo_data?: boolean;
 }
 
 export type ConfidenceLevel = 'high' | 'moderate' | 'low' | 'insufficient_data';
@@ -140,10 +140,11 @@ export interface Transaction {
 	due_at: string;
 	milestones: TransactionMilestone[];
 	status: TransactionStatus;
-	simulated_payment: {
-		status: 'simulated_authorized' | 'simulated_held' | 'simulated_released' | 'not_initiated';
+	payment?: {
+		status: 'not_started' | 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled';
 		amount: number;
-		disclaimer: string;
+		currency: string;
+		provider_reference?: string;
 	};
 	evidence_attachments: Array<{
 		id: string;
@@ -168,7 +169,6 @@ export interface TransactionEvent {
 		| 'created'
 		| 'agreement_proposed'
 		| 'agreement_accepted'
-		| 'payment_simulated'
 		| 'work_started'
 		| 'milestone_completed'
 		| 'deliverable_submitted'

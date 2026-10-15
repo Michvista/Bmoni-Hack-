@@ -1,8 +1,11 @@
 <script lang="ts">
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import SimulatedPaymentNotice from '$lib/components/ui/SimulatedPaymentNotice.svelte';
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { apiClient } from '$lib/api/client';
+	import { fetchCategories } from '$lib/api/categories';
+	import { fetchVendors } from '$lib/api/vendors';
+	import { createTransactionDraft } from '$lib/api/transactions';
 	import { authStore } from '$lib/stores/authStore';
 	import { toast } from '$lib/stores/notificationStore';
 	import type { Listing, VendorProfile } from '$lib/types/models';
@@ -22,18 +25,23 @@
 	} = $props();
 
 	const currentUser = authStore;
-	const vendors = dbStore.getVendors();
-	const categories = dbStore.getCategories();
+	let vendors = $state<VendorProfile[]>([]);
+	let categories = $state<import('$lib/types/models').Category[]>([]);
+	let loadError = $state('');
+	onMount(async () => {
+		try { [vendors, categories] = await Promise.all([fetchVendors(), fetchCategories()]); }
+		catch (error) { loadError = error instanceof Error ? error.message : 'Could not load agreement options.'; }
+	});
 
-	let selectedVendorId = $state(vendors[0]?.id || '');
-	let selectedCategoryId = $state(categories[0]?.id || '');
+	let selectedVendorId = $state('');
+	let selectedCategoryId = $state('');
 	let itemTitle = $state('');
 	let agreedPrice = $state<number | ''>('');
 	let scopeDescription = $state('');
 	let deliverablesText = $state('Completed work according to agreed specifications\nPhysical inspection sign-off');
 	let turnaroundDescription = $state('24 hours standard');
 	let dueDays = $state('2');
-	let cancellationTerms = $state('Full simulated refund before work commencement; 50% simulated charge once material prep starts.');
+	let cancellationTerms = $state('Cancellation terms to be agreed by both parties before work starts.');
 	let isSubmitting = $state(false);
 
 	$effect(() => {
@@ -49,8 +57,12 @@
 		}
 	});
 
-	function handleSubmit(e: SubmitEvent) {
+	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
+		if (!$currentUser || $currentUser.role !== 'student') {
+			toast.show({ title: 'Student account required', message: 'Sign in with a student account to draft an agreement.', type: 'error' });
+			return;
+		}
 		if (!agreedPrice || Number(agreedPrice) <= 0) {
 			toast.show({
 				title: 'Price Required',
@@ -80,9 +92,7 @@
 				.map((d) => d.trim())
 				.filter((d) => d.length > 0);
 
-			const newTx = dbStore.createTransaction({
-				buyer_id: $currentUser.id,
-				buyer_name: $currentUser.display_name,
+			const newTx = await createTransactionDraft({
 				vendor_id: selectedVendorId,
 				listing_id: initialListing?.id,
 				item_title: itemTitle.trim(),
@@ -125,14 +135,12 @@
 	size="lg"
 >
 	<form onsubmit={handleSubmit} class="space-y-4">
-		<SimulatedPaymentNotice />
-
 		<!-- Parties Summary -->
 		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
 			<div>
 				<span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buyer (Student)</span>
-				<div class="text-xs font-bold text-slate-900 mt-0.5">{$currentUser.display_name}</div>
-				<div class="text-[11px] text-slate-500">{$currentUser.matric_or_phone}</div>
+				<div class="text-xs font-bold text-slate-900 mt-0.5">{$currentUser?.display_name ?? 'Sign in required'}</div>
+				<div class="text-[11px] text-slate-500">{$currentUser?.matric_or_phone ?? ''}</div>
 			</div>
 
 			<div>
@@ -261,9 +269,11 @@
 		</div>
 
 		<!-- Actions -->
+		{#if loadError}<div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{loadError}</div>{/if}
+		{#if !apiClient.backendConfigured}<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Connect the AKOKA backend before drafting an agreement.</div>{/if}
 		<div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
 			<Button variant="outline" size="md" onclick={onclose}>Cancel</Button>
-			<Button variant="primary" size="md" type="submit" loading={isSubmitting}>
+			<Button variant="primary" size="md" type="submit" loading={isSubmitting} disabled={!apiClient.backendConfigured || categories.length === 0 || vendors.length === 0}>
 				Propose Agreement Terms
 			</Button>
 		</div>

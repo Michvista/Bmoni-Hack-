@@ -4,6 +4,10 @@
 	import Footer from '$lib/components/navigation/Footer.svelte';
 	import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
 	import SubmitObservationModal from '$lib/components/insights/SubmitObservationModal.svelte';
+	import { onMount } from 'svelte';
+	import { apiClient } from '$lib/api/client';
+	import { fetchCurrentUser } from '$lib/api/auth';
+	import { clearAuthenticatedUser, setAuthenticatedUser } from '$lib/stores/authStore';
 
 	let { children } = $props();
 
@@ -16,6 +20,11 @@
 	function closeSubmitModal() {
 		isSubmitModalOpen = false;
 	}
+
+	onMount(() => {
+		if (!apiClient.backendConfigured) return;
+		fetchCurrentUser().then(setAuthenticatedUser).catch(clearAuthenticatedUser);
+	});
 </script>
 
 <div class="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-akoka-600 selection:text-white">

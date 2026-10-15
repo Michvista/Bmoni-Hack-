@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { fetchVendor } from '$lib/api/vendors';
+	import { apiClient } from '$lib/api/client';
 	import VendorTrustBadge from '$lib/components/vendors/VendorTrustBadge.svelte';
 	import ListingCard from '$lib/components/listings/ListingCard.svelte';
 	import CreateTransactionModal from '$lib/components/transactions/CreateTransactionModal.svelte';
@@ -14,12 +16,14 @@
 		IconAlertCircle,
 		IconArrowRight
 	} from '$lib/components/icons';
-	import type { Listing } from '$lib/types/models';
+	import type { Listing, VendorProfile, Review } from '$lib/types/models';
 
 	const vendorId = page.params.id || '';
-	const vendor = $derived(dbStore.getVendorById(vendorId));
-	const listings = $derived(dbStore.getListings().filter((l: Listing) => l.vendor_id === vendorId));
-	const reviews = $derived(dbStore.getReviewsForVendor(vendorId));
+	let vendor = $state<VendorProfile | undefined>();
+	let listings = $state<Listing[]>([]);
+	let reviews = $state<Review[]>([]);
+	let loadError = $state('');
+	onMount(() => { fetchVendor(vendorId).then((result) => { vendor = result.vendor; listings = result.listings; reviews = result.reviews; }).catch((error) => loadError = error instanceof Error ? error.message : 'Could not load provider profile.'); });
 
 	let selectedListingForTx = $state<Listing | undefined>(undefined);
 	let isTxModalOpen = $state(false);
@@ -35,6 +39,7 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+	{#if loadError}<div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}{#if !apiClient.backendConfigured} Configure the AKOKA backend URL to load this provider.{/if}</div>{/if}
 	{#if !vendor}
 		<div class="py-16 text-center space-y-4">
 			<IconAlertCircle size={32} class="text-rose-500 mx-auto" />
@@ -102,9 +107,7 @@
 						<span>Start Documented Agreement</span>
 						<IconArrowRight size={15} />
 					</Button>
-					<span class="text-[11px] text-slate-400 text-center font-mono">
-						Simulated payment safeguard
-					</span>
+					<span class="text-[11px] text-slate-400 text-center font-mono">Payment starts after agreement through the backend.</span>
 				</div>
 			</div>
 

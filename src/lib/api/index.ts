@@ -6,3 +6,5 @@ export * from './vendors';
 export * from './transactions';
 export * from './reports';
 export * from './admin';
+export * from './auth';
+export * from './payments';

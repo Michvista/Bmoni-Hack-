@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { fetchModerationQueue, moderateObservation, resolveReport as resolveModerationReport } from '$lib/api/admin';
+	import { apiClient } from '$lib/api/client';
 	import { authStore } from '$lib/stores/authStore';
 	import { toast } from '$lib/stores/notificationStore';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -8,7 +10,6 @@
 		IconAlertCircle,
 		IconCheckmark,
 		IconX,
-		IconRefresh,
 		IconFlag,
 		IconTagPrice,
 		IconFileText
@@ -16,56 +17,28 @@
 
 	const currentUser = authStore;
 
-	const pendingObservations = $derived(
-		dbStore.getObservations().filter((o) => o.verification_status === 'pending')
-	);
-	const verifiedObservations = $derived(
-		dbStore.getObservations().filter((o) => o.verification_status === 'verified')
-	);
-	const pendingReports = $derived(
-		dbStore.getReports().filter((r) => r.status === 'pending')
-	);
-	const disputedTransactions = $derived(
-		dbStore.getTransactions().filter((t) => t.status === 'disputed')
-	);
+	let pendingObservations = $state<import('$lib/types/models').PriceObservation[]>([]);
+	let pendingReports = $state<import('$lib/types/models').Report[]>([]);
+	let disputedTransactions = $state<import('$lib/types/models').Transaction[]>([]);
+	let verifiedObservationCount = $state(0);
+	let pageError = $state('');
+	let busy = $state(false);
+	async function refreshQueue() { const queue = await fetchModerationQueue(); pendingObservations = queue.pendingObservations; pendingReports = queue.reports; disputedTransactions = queue.pendingTransactions; verifiedObservationCount = queue.verifiedObservationCount ?? 0; }
+	onMount(() => { refreshQueue().catch((error) => pageError = error instanceof Error ? error.message : 'Could not load moderation queue.'); });
 
-	function handleVerifyObs(id: string) {
-		dbStore.verifyObservation(id, 'verified');
-		toast.show({
-			title: 'Observation Approved',
-			message: 'Observation marked verified and integrated into statistical price insights.',
-			type: 'success'
-		});
+	async function handleVerifyObs(id: string) {
+		await runModeration(() => moderateObservation(id, 'verified'), 'Observation Approved');
 	}
 
-	function handleRejectObs(id: string) {
-		dbStore.verifyObservation(id, 'rejected');
-		toast.show({
-			title: 'Observation Rejected',
-			message: 'Observation discarded from calculation.',
-			type: 'info'
-		});
+	async function handleRejectObs(id: string) {
+		await runModeration(() => moderateObservation(id, 'rejected'), 'Observation Rejected');
 	}
 
-	function handleResolveReport(id: string, action: 'resolved' | 'dismissed') {
-		dbStore.resolveReport(id, action);
-		toast.show({
-			title: `Report ${action === 'resolved' ? 'Resolved' : 'Dismissed'}`,
-			message: `Report #${id} updated.`,
-			type: 'info'
-		});
+	async function handleResolveReport(id: string, action: 'resolved' | 'dismissed') {
+		await runModeration(() => resolveModerationReport(id, action), `Report ${action === 'resolved' ? 'Resolved' : 'Dismissed'}`);
 	}
+	async function runModeration(action: () => Promise<void>, title: string) { if (busy) return; busy = true; try { await action(); await refreshQueue(); toast.show({ title, message: 'The backend saved the moderation action.', type: 'success' }); } catch (error) { toast.show({ title: 'Moderation action failed', message: error instanceof Error ? error.message : 'Could not save this action.', type: 'error' }); } finally { busy = false; } }
 
-	function handleResetDemo() {
-		if (confirm('Reset all demo data back to clean initial seed dataset?')) {
-			dbStore.resetToDefault();
-			toast.show({
-				title: 'Database Reset',
-				message: 'Initial demo dataset restored.',
-				type: 'info'
-			});
-		}
-	}
 </script>
 
 <svelte:head>
@@ -73,6 +46,7 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+	{#if pageError}<div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{pageError}{#if !apiClient.backendConfigured} Configure the AKOKA backend URL to load moderation data.{/if}</div>{/if}
 	<!-- Page Header -->
 	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
 		<div>
@@ -88,12 +62,6 @@
 			</p>
 		</div>
 
-		<div class="flex items-center gap-2">
-			<Button variant="outline" size="sm" onclick={handleResetDemo}>
-				<IconRefresh size={14} />
-				<span>Reset Demo State</span>
-			</Button>
-		</div>
 	</div>
 
 	<!-- Desk Metrics Overview -->
@@ -113,9 +81,9 @@
 				Active Verified Prices
 			</div>
 			<div class="text-2xl font-black text-slate-900 font-mono">
-				{verifiedObservations.length}
+				{verifiedObservationCount}
 			</div>
-			<div class="text-[11px] text-emerald-600 font-medium">Powering live insights</div>
+			<div class="text-[11px] text-emerald-600 font-medium">Available for trusted comparisons</div>
 		</div>
 
 		<div class="p-5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1">

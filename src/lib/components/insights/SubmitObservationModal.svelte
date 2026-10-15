@@ -1,8 +1,11 @@
 <script lang="ts">
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { onMount } from 'svelte';
+	import { apiClient } from '$lib/api/client';
 	import { UNILAG_CAMPUS_ZONES } from '$lib/data/campusZones';
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { fetchCategories } from '$lib/api/categories';
+	import { submitPriceObservation } from '$lib/api/insights';
 	import { toast } from '$lib/stores/notificationStore';
 	import { authStore } from '$lib/stores/authStore';
 	import type { ObservationSourceType } from '$lib/types/models';
@@ -15,10 +18,10 @@
 		onclose: () => void;
 	} = $props();
 
-	const categories = dbStore.getCategories();
+	let categories = $state<import('$lib/types/models').Category[]>([]);
 	const currentUser = authStore;
 
-	let categoryId = $state(categories[0]?.id || 'cat-print');
+	let categoryId = $state('');
 	let itemSpecification = $state('');
 	let amount = $state<number | ''>('');
 	let unit = $state('per page');
@@ -26,8 +29,9 @@
 	let areaDetail = $state('');
 	let sourceType = $state<ObservationSourceType>('student_submitted');
 	let notes = $state('');
-	let receiptSimulated = $state(false);
 	let isSubmitting = $state(false);
+	let categoryLoadError = $state('');
+	onMount(() => { fetchCategories().then((items) => { categories = items; categoryId = items[0]?.id ?? ''; }).catch((error) => categoryLoadError = error.message); });
 
 	const activeCategory = $derived(categories.find((c) => c.id === categoryId));
 
@@ -42,8 +46,12 @@
 		}
 	});
 
-	function handleSubmit(e: SubmitEvent) {
+	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
+		if (!$currentUser) {
+			toast.show({ title: 'Sign in required', message: 'Sign in before submitting a price observation.', type: 'error' });
+			return;
+		}
 		if (!amount || Number(amount) <= 0) {
 			toast.show({
 				title: 'Invalid Amount',
@@ -70,7 +78,8 @@
 				? `${selectedZone?.shortName}: ${areaDetail.trim()}`
 				: selectedZone?.name || 'UNILAG Akoka';
 
-			dbStore.addObservation({
+			await submitPriceObservation({
+				reporter_id: $currentUser.id,
 				category_id: categoryId,
 				item_specification: itemSpecification.trim(),
 				amount: Number(amount),
@@ -79,9 +88,7 @@
 				campus_zone: campusZone,
 				source_type: sourceType,
 				notes: notes.trim() || undefined,
-				receipt_image_url: receiptSimulated
-					? 'https://images.unsplash.com/photo-1554415707-9e4c19455a29?w=400&auto=format&fit=crop&q=80'
-					: undefined
+				receipt_image_url: undefined
 			});
 
 			toast.show({
@@ -93,7 +100,6 @@
 			// Reset form
 			amount = '';
 			notes = '';
-			receiptSimulated = false;
 			isSubmitting = false;
 			onclose();
 		} catch (err: any) {
@@ -230,8 +236,8 @@
 			</div>
 		</div>
 
-		<!-- Source Type & Receipt Simulation -->
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+		<!-- Observation source -->
+		<div class="pt-1">
 			<div>
 				<label for="source-select" class="block text-xs font-semibold text-slate-700 mb-1">
 					Observation Source Type
@@ -247,18 +253,8 @@
 					<option value="transaction_linked">Transaction-Linked (Completed Job)</option>
 				</select>
 			</div>
-
-			<div class="flex items-center">
-				<label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer pt-4">
-					<input
-						type="checkbox"
-						bind:checked={receiptSimulated}
-						class="w-4 h-4 rounded text-akoka-600 focus:ring-akoka-500 border-slate-300"
-					/>
-					<span class="font-medium">Attach proof / receipt photo</span>
-				</label>
-			</div>
 		</div>
+		<p class="text-[11px] text-slate-500">Secure receipt uploads become available when the backend provides its evidence-storage endpoint.</p>
 
 		<!-- Notes / Scope details -->
 		<div>
@@ -275,6 +271,8 @@
 		</div>
 
 		<!-- Guardrail notice -->
+		{#if categoryLoadError}<div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-700" role="alert">{categoryLoadError}</div>{/if}
+		{#if !apiClient.backendConfigured}<div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800">Connect the AKOKA backend to submit price observations.</div>{/if}
 		<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
 			<div class="font-semibold text-slate-800">Verification Integrity Notice</div>
 			<p>
@@ -285,7 +283,7 @@
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
 			<Button variant="outline" size="md" onclick={onclose}>Cancel</Button>
-			<Button variant="primary" size="md" type="submit" loading={isSubmitting}>
+			<Button variant="primary" size="md" type="submit" loading={isSubmitting} disabled={!apiClient.backendConfigured || categories.length === 0}>
 				Submit Observation
 			</Button>
 		</div>

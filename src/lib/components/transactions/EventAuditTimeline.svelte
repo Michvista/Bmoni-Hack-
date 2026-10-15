@@ -3,7 +3,6 @@
 	import {
 		IconClock,
 		IconCheckmark,
-		IconLock,
 		IconAlertCircle,
 		IconFileText,
 		IconReceipt
@@ -19,8 +18,6 @@
 			case 'agreement_accepted':
 			case 'completion_confirmed':
 				return IconCheckmark;
-			case 'payment_simulated':
-				return IconLock;
 			case 'deliverable_submitted':
 			case 'milestone_completed':
 				return IconReceipt;

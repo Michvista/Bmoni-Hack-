@@ -1,11 +1,14 @@
 <script lang="ts">
-	import { dbStore } from '$lib/stores/mockDatabase';
+	import { onMount } from 'svelte';
+	import { fetchListings } from '$lib/api/listings';
+	import { fetchCategories } from '$lib/api/categories';
+	import { fetchObservations, fetchPriceInsights } from '$lib/api/insights';
+	import { apiClient } from '$lib/api/client';
 	import { UNILAG_CAMPUS_ZONES } from '$lib/data/campusZones';
 	import PriceMetricCard from '$lib/components/insights/PriceMetricCard.svelte';
 	import ObservationCard from '$lib/components/insights/ObservationCard.svelte';
 	import ListingCard from '$lib/components/listings/ListingCard.svelte';
 	import CreateTransactionModal from '$lib/components/transactions/CreateTransactionModal.svelte';
-	import SimulatedPaymentNotice from '$lib/components/ui/SimulatedPaymentNotice.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import {
 		IconSearch,
@@ -20,23 +23,35 @@
 	} from '$lib/components/icons';
 	import type { Listing } from '$lib/types/models';
 
-	const categories = dbStore.getCategories();
-	let selectedCategoryId = $state(categories[0]?.id || 'cat-print');
+	let categories = $state<import('$lib/types/models').Category[]>([]);
+	let observations = $state<import('$lib/types/models').PriceObservation[]>([]);
+	let listings = $state<Listing[]>([]);
+	let activeInsight = $state<import('$lib/types/models').PriceInsight | null>(null);
+	let backendError = $state('');
+	let selectedCategoryId = $state('');
 	let activeZoneFilter = $state<string | null>(null);
 
 	// Active Category object
-	const activeCategory = $derived(categories.find((c) => c.id === selectedCategoryId) || categories[0]);
+	const activeCategory = $derived(categories.find((c) => c.id === selectedCategoryId));
 
 	// Calculate live insight for active category
-	const activeInsight = $derived(dbStore.calculatePriceInsight(selectedCategoryId));
-
-	// Get latest verified observations
-	const recentObservations = $derived(dbStore.getObservations().slice(0, 4));
+	const recentObservations = $derived(observations.slice(0, 4));
 
 	// Featured listings
-	const featuredListings = $derived(
-		dbStore.getListings({ area: activeZoneFilter ?? undefined }).slice(0, 3)
-	);
+	const featuredListings = $derived(listings.filter((item) => !activeZoneFilter || item.vendor?.campus_zone === activeZoneFilter).slice(0, 3));
+	onMount(async () => {
+		try {
+			const [categoryData, observationData, listingData] = await Promise.all([fetchCategories(), fetchObservations(), fetchListings()]);
+			categories = categoryData;
+			observations = observationData.filter((item) => item.verification_status === 'verified');
+			listings = listingData;
+			selectedCategoryId = categoryData[0]?.id ?? '';
+		} catch (error) { backendError = error instanceof Error ? error.message : 'Could not load campus data.'; }
+	});
+	$effect(() => {
+		if (!selectedCategoryId) return;
+		fetchPriceInsights({ category: selectedCategoryId }).then((value) => activeInsight = value).catch((error) => backendError = error.message);
+	});
 
 	// Transaction draft modal state
 	let selectedListingForTx = $state<Listing | undefined>(undefined);
@@ -60,6 +75,7 @@
 	></div>
 
 	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+		{#if backendError}<div class="mb-6 rounded-xl bg-rose-950/70 border border-rose-700 p-4 text-sm text-rose-100" role="alert">{backendError}{#if !apiClient.backendConfigured} Add the AKOKA backend URL to load campus data.{/if}</div>{/if}
 		<div class="max-w-3xl space-y-6">
 			<!-- Main Headline -->
 			<h1 class="text-3xl sm:text-5xl font-black tracking-tight text-white leading-[1.15]">
@@ -68,7 +84,7 @@
 
 			<!-- Subtitle (Grounding in Section 1 & 3 of spec) -->
 			<p class="text-base sm:text-lg text-slate-300 leading-relaxed max-w-2xl font-normal">
-				Understand what services typically cost around UNILAG before you pay. Compare verified provider quotes, check data confidence, and document agreed terms with simulated protected workflows.
+				Understand what services typically cost around UNILAG before you pay. Compare verified provider quotes, check data confidence, and document agreed terms before work begins.
 			</p>
 
 			<!-- Quick Actions -->
@@ -113,7 +129,6 @@
 							: 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800'}"
 					>
 						<span>{zone.shortName}</span>
-						<span class="ml-1 text-[10px] text-slate-500 font-mono">({zone.activeVendorsCount})</span>
 					</button>
 				{/each}
 			</div>
@@ -159,10 +174,10 @@
 		</div>
 
 		<!-- Metric Spotlight Card -->
-		<PriceMetricCard insight={activeInsight} />
+		{#if activeInsight}<PriceMetricCard insight={activeInsight} />{/if}
 
 		<!-- Comparison Rules Banner (Section 7: "Compare like with like") -->
-		<div class="p-4 rounded-xl bg-slate-100/80 border border-slate-200/80 text-xs text-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+		{#if activeCategory}<div class="p-4 rounded-xl bg-slate-100/80 border border-slate-200/80 text-xs text-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
 			<div class="flex items-start sm:items-center gap-2.5">
 				<IconScale size={16} class="text-slate-500 shrink-0 mt-0.5 sm:mt-0" />
 				<div>
@@ -178,7 +193,7 @@
 			>
 				Full Category Rules →
 			</a>
-		</div>
+		</div>{/if}
 	</section>
 
 	<!-- Section 2: How AKOKA Works (Section 3 Product Loop) -->
@@ -225,7 +240,7 @@
 				</div>
 				<h3 class="text-sm font-bold text-slate-900">3. Document Terms & Milestones</h3>
 				<p class="text-xs text-slate-600 leading-relaxed">
-					Lock agreed price, exact scope, deliverables, and deadlines in a documented agreement with simulated payment safeguards before work begins.
+					Lock agreed price, exact scope, deliverables, and deadlines in a documented agreement before work begins. Payments are initiated through the connected backend.
 				</p>
 			</div>
 		</div>
@@ -252,7 +267,7 @@
 
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 			{#each recentObservations as obs}
-				<ObservationCard observation={obs} />
+				<ObservationCard observation={obs} categoryName={categories.find((category) => category.id === obs.category_id)?.name} />
 			{/each}
 		</div>
 	</section>
@@ -283,8 +298,6 @@
 		</div>
 	</section>
 
-	<!-- Protected Workflow Simulated Payment Banner -->
-	<SimulatedPaymentNotice />
 </div>
 
 <!-- Transaction Draft Modal -->
