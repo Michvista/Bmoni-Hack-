@@ -34,6 +34,7 @@
 	onMount(() => { fetchCategories().then((items) => { categories = items; categoryId = items[0]?.id ?? ''; }).catch((error) => categoryLoadError = error.message); });
 
 	const activeCategory = $derived(categories.find((c) => c.id === categoryId));
+	$effect(() => { sourceType = $currentUser?.role === 'vendor' ? 'vendor_confirmed' : 'student_submitted'; });
 
 	// Update default item specification based on chosen category
 	$effect(() => {
@@ -79,7 +80,6 @@
 				: selectedZone?.name || 'UNILAG Akoka';
 
 			await submitPriceObservation({
-				reporter_id: $currentUser.id,
 				category_id: categoryId,
 				item_specification: itemSpecification.trim(),
 				amount: Number(amount),
@@ -87,8 +87,7 @@
 				area: areaText,
 				campus_zone: campusZone,
 				source_type: sourceType,
-				notes: notes.trim() || undefined,
-				receipt_image_url: undefined
+				notes: notes.trim() || undefined
 			});
 
 			toast.show({
@@ -247,14 +246,15 @@
 					bind:value={sourceType}
 					class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-akoka-500"
 				>
-					<option value="student_submitted">Student Submitted (Self-report)</option>
-					<option value="vendor_confirmed">Vendor Confirmed (Direct Price List)</option>
-					<option value="receipt_supported">Receipt Supported (Physical Receipt)</option>
-					<option value="transaction_linked">Transaction-Linked (Completed Job)</option>
+					{#if $currentUser?.role === 'vendor'}
+						<option value="vendor_confirmed">Vendor Confirmed (Direct Price List)</option>
+					{:else}
+						<option value="student_submitted">Student Submitted (Self-report)</option>
+					{/if}
 				</select>
 			</div>
 		</div>
-		<p class="text-[11px] text-slate-500">Secure receipt uploads become available when the backend provides its evidence-storage endpoint.</p>
+		<p class="text-[11px] text-slate-500">Receipt uploads are not enabled yet. Transaction-linked sources are recorded from completed agreements.</p>
 
 		<!-- Notes / Scope details -->
 		<div>

@@ -6,11 +6,11 @@ export async function fetchTransactions(): Promise<Transaction[]> {
 }
 
 export async function fetchTransactionById(id: string): Promise<Transaction | undefined> {
-	return apiClient.get<Transaction>(`/transactions/${id}`);
+	return apiClient.get<Transaction>(`/transactions/${encodeURIComponent(id)}`);
 }
 
 export async function fetchTransactionEvents(id: string): Promise<TransactionEvent[]> {
-	return apiClient.get<TransactionEvent[]>(`/transactions/${id}/events`);
+	return apiClient.get<TransactionEvent[]>(`/transactions/${encodeURIComponent(id)}/events`);
 }
 
 export async function createTransactionDraft(data: {
@@ -35,7 +35,7 @@ export async function updateTransactionAgreement(
 		details: string;
 	}
 ): Promise<void> {
-	await apiClient.patch(`/transactions/${id}/agreement`, data);
+	await apiClient.patch(`/transactions/${encodeURIComponent(id)}/agreement`, data);
 }
 
 export async function uploadTransactionEvidence(id: string, file: File, title: string): Promise<void> {
@@ -48,12 +48,9 @@ export async function uploadTransactionEvidence(id: string, file: File, title: s
 export async function recordTransactionEvent(
 	id: string,
 	eventData: {
-		event_type: string;
-		actor_id: string;
-		actor_name: string;
-		actor_role: any;
+		event_type: TransactionEvent['event_type'];
 		details: string;
 	}
 ): Promise<void> {
-	await apiClient.post(`/transactions/${id}/events`, eventData);
+	await apiClient.post(`/transactions/${encodeURIComponent(id)}/events`, eventData);
 }

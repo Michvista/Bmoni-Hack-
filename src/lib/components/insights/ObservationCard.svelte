@@ -10,6 +10,7 @@
 		IconAlertCircle
 	} from '$lib/components/icons';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import ReportAction from '$lib/components/reports/ReportAction.svelte';
 
 	let {
 		observation,
@@ -135,5 +136,8 @@
 				{observation.vendor_name}
 			</span>
 		{/if}
+	</div>
+	<div class="flex justify-end border-t border-slate-100 pt-2">
+		<ReportAction targetType="price_observation" targetId={observation.id} label="Report price" />
 	</div>
 </div>

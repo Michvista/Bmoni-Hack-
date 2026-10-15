@@ -24,7 +24,9 @@
 		try {
 			const user = await registerAccount({ name: name.trim(), email: email.trim(), password, phone: phone.trim(), role, campus_zone: campusZone });
 			setAuthenticatedUser(user);
-			await goto(page.url.searchParams.get('returnTo') || dashboardPathForRole(user.role));
+			const returnTo = page.url.searchParams.get('returnTo') || '';
+			const safeReturn = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : dashboardPathForRole(user.role);
+			await goto(safeReturn);
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Could not create your account.';
 		} finally {

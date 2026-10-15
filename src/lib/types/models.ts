@@ -196,7 +196,7 @@ export interface Report {
 	id: string;
 	reporter_id: string;
 	reporter_name: string;
-	target_type: 'listing' | 'price_observation' | 'transaction' | 'vendor';
+	target_type: 'listing' | 'price_observation' | 'transaction' | 'vendor' | 'review';
 	target_id: string;
 	reason: string;
 	details: string;

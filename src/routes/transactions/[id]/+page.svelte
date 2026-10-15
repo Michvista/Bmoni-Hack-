@@ -39,6 +39,7 @@
 	onMount(() => { refresh().catch((error) => pageError = error instanceof Error ? error.message : 'Could not load agreement.'); });
 	const isBuyer = $derived(Boolean(transaction && $currentUser?.id === transaction.buyer_id && $currentUser?.role === 'student'));
 	const isVendor = $derived(Boolean(transaction && $currentUser?.role === 'vendor' && $currentUser?.id === transaction.vendor?.user_id));
+	const canCancel = $derived(Boolean(transaction && (isBuyer || isVendor) && ['awaiting_agreement', 'agreed'].includes(transaction.status) && !['pending', 'processing', 'succeeded'].includes(transaction.payment?.status ?? 'not_started')));
 
 	// Evidence upload modal state
 	let isEvidenceModalOpen = $state(false);
@@ -49,6 +50,8 @@
 	let isDisputeModalOpen = $state(false);
 	let disputeReason = $state('Delay / Unapproved scope change');
 	let disputeDetails = $state('');
+	let isCancellationModalOpen = $state(false);
+	let cancellationDetails = $state('');
 	let reviewRating = $state(5);
 	let reviewComment = $state('');
 
@@ -67,11 +70,11 @@
 		await runAction(async () => { await apiClient.patch(`/transactions/${encodeURIComponent(transaction!.id)}/milestones/${encodeURIComponent(milestoneId)}`, {}); await refresh(); }, 'Milestone Updated', 'Milestone progress was saved.');
 	}
 
-	async function runAction(action: () => Promise<unknown>, title: string, message: string) {
-		if (busy) return;
+	async function runAction(action: () => Promise<unknown>, title: string, message: string): Promise<boolean> {
+		if (busy) return false;
 		busy = true;
-		try { await action(); await refresh(); toast.show({ title, message, type: 'success' }); }
-		catch (error) { toast.show({ title: 'Action failed', message: error instanceof Error ? error.message : 'The backend could not save this action.', type: 'error' }); }
+		try { await action(); await refresh(); toast.show({ title, message, type: 'success' }); return true; }
+		catch (error) { toast.show({ title: 'Action failed', message: error instanceof Error ? error.message : 'The backend could not save this action.', type: 'error' }); return false; }
 		finally { busy = false; }
 	}
 
@@ -82,12 +85,11 @@
 			toast.show({ title: 'Unsupported evidence file', message: 'Choose a JPG, PNG, WebP, or PDF file up to 10 MB.', type: 'error' });
 			return;
 		}
-		await runAction(async () => {
+		const saved = await runAction(async () => {
 			await uploadTransactionEvidence(transaction!.id, evidenceFile!, evidenceTitle);
 			await updateTransactionAgreement(transaction!.id, { status: 'awaiting_confirmation', details: `Deliverable submitted: ${evidenceTitle}` });
 		}, 'Evidence Submitted', 'Evidence was sent to the agreement record.');
-		isEvidenceModalOpen = false;
-		evidenceFile = undefined;
+		if (saved) { isEvidenceModalOpen = false; evidenceFile = undefined; }
 	}
 
 	async function handleConfirmCompletion() {
@@ -107,11 +109,18 @@
 	async function handleRaiseDispute(e: SubmitEvent) {
 		e.preventDefault();
 		if (!transaction || !$currentUser) return;
-		await runAction(async () => {
+		const saved = await runAction(async () => {
 			await submitReport({ target_type: 'transaction', target_id: transaction!.id, reason: disputeReason, details: disputeDetails });
 			await updateTransactionAgreement(transaction!.id, { status: 'disputed', details: `Issue reported: ${disputeReason}` });
 		}, 'Issue Reported', 'Your report was sent for review.');
-		isDisputeModalOpen = false;
+		if (saved) isDisputeModalOpen = false;
+	}
+
+	async function handleCancelAgreement(event: SubmitEvent) {
+		event.preventDefault();
+		if (!transaction || !canCancel || !cancellationDetails.trim()) return;
+		const saved = await runAction(() => updateTransactionAgreement(transaction!.id, { status: 'cancelled', details: `Agreement cancelled: ${cancellationDetails.trim()}` }), 'Agreement cancelled', 'The cancellation was recorded.');
+		if (saved) isCancellationModalOpen = false;
 	}
 </script>
 
@@ -199,6 +208,9 @@
 							<IconFlag size={14} />
 							<span>Flag Issue / Dispute</span>
 						</Button>
+					{/if}
+					{#if canCancel}
+						<Button variant="ghost" size="sm" class="text-slate-600 hover:text-rose-700" disabled={busy} onclick={() => isCancellationModalOpen = true}>Cancel agreement</Button>
 					{/if}
 				</div>
 			</div>
@@ -443,6 +455,16 @@
 			<Button variant="outline" size="md" onclick={() => (isEvidenceModalOpen = false)}>Cancel</Button>
 			<Button variant="primary" size="md" type="submit" loading={busy} disabled={!apiClient.backendConfigured}>Submit & Request Sign-off</Button>
 		</div>
+	</form>
+</Modal>
+
+<Modal isOpen={isCancellationModalOpen} onclose={() => isCancellationModalOpen = false} title="Cancel agreement" subtitle="Cancellation will be recorded in the agreement history." size="md">
+	<form onsubmit={handleCancelAgreement} class="space-y-4">
+		<p class="text-sm text-slate-600">You can cancel before work begins. If payment has already succeeded, contact the Trust Desk so the backend can handle the payment outcome.</p>
+		<label class="block text-sm font-medium">Reason
+			<textarea bind:value={cancellationDetails} minlength="5" maxlength="500" rows="3" required class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2" placeholder="Briefly explain why this agreement is being cancelled."></textarea>
+		</label>
+		<div class="flex justify-end gap-2"><Button type="button" variant="outline" size="sm" onclick={() => isCancellationModalOpen = false}>Keep agreement</Button><Button type="submit" variant="danger" size="sm" loading={busy} disabled={busy}>Confirm cancellation</Button></div>
 	</form>
 </Modal>
 

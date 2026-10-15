@@ -13,5 +13,5 @@ export function clearAuthenticatedUser() {
 }
 
 export function dashboardPathForRole(role: UserRole): string {
-	return role === 'admin' ? '/admin' : role === 'vendor' ? '/vendor/dashboard' : '/student/dashboard';
+	return role === 'admin' ? '/admin' : role === 'vendor' ? '/vendor' : '/student';
 }

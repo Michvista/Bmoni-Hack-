@@ -3,6 +3,7 @@
 	import VendorTrustBadge from '$lib/components/vendors/VendorTrustBadge.svelte';
 	import { IconClock, IconMapPin, IconArrowRight, IconCheckmark, IconX } from '$lib/components/icons';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ReportAction from '$lib/components/reports/ReportAction.svelte';
 
 	let {
 		listing,
@@ -111,7 +112,8 @@
 				Store Details
 			</a>
 		{/if}
-
+		<div class="flex items-center gap-1">
+			<ReportAction targetType="listing" targetId={listing.id} />
 		<Button
 			variant="primary"
 			size="sm"
@@ -121,5 +123,6 @@
 			<span>Start Agreement</span>
 			<IconArrowRight size={14} />
 		</Button>
+		</div>
 	</div>
 </div>

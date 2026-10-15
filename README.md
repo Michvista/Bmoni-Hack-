@@ -8,7 +8,7 @@ AKOKA is a SvelteKit campus commerce frontend for price comparison, vendor disco
 2. A student submits a recent price observation. It enters the moderation workflow; it should affect trusted price summaries only after backend verification.
 3. A student signs in, drafts an agreement with a vendor, and records price, scope, deliverables, turnaround, due date, milestones, and cancellation terms.
 4. Both parties progress the agreement. The buyer can start a payment through the backend only after the agreement is accepted. The backend creates the provider checkout session and reports its verified status to the frontend.
-5. The vendor records work and deliverables. The student confirms completion or raises an issue. Reports and evidence go to authorized moderators.
+5. The vendor records work and deliverables. The student confirms completion or raises an issue; either party can cancel before work begins when payment is not pending or complete. Reports and evidence go to authorized moderators.
 6. Vendors manage their offers and agreements in their portal. Moderators review reports, observations, and listings in the admin portal.
 
 Payment status in the UI is informational and comes from the backend. AKOKA does not claim to hold funds or provide escrow. See the [BMONI Nigeria API documentation](https://embedded-docs.bmoni.com/markets/nigeria/); the backend team must decide and implement the provider-side flow and expose an AKOKA API contract.
@@ -19,11 +19,11 @@ Payment status in the UI is informational and comes from the backend. AKOKA does
 | --- | --- | --- |
 | Landing page, category/listing discovery, campus zones, vendor profiles | Implemented | Live listing/vendor data requires configured API |
 | Like-for-like price comparison, confidence, observation history chart | Implemented; chart uses real observation dates and does not invent trend points | Live verified observations and insight calculations require API data |
-| Observation submission | Form validates and submits to the API; there is no local fallback or fake receipt image | Requires authenticated `POST /price-observations`; receipt attachment for a price observation needs a secure upload contract |
+| Observation submission | Form validates and submits to the API; students cannot self-label data as vendor-confirmed, receipt-supported, or transaction-linked | Requires authenticated `POST /price-observations`; receipt attachment for a price observation needs a secure upload contract |
 | Sign-in, registration, sign-out | Pages and API client calls exist; admin is not self-registerable | Backend must implement cookie/session auth routes and return the documented user shape |
 | Role-aware student, vendor, admin layouts | Routes are separated and client-side role gates are present | This is navigation/UI gating only; backend must enforce permissions on every protected endpoint |
 | Student and vendor portal pages | Pages load account data through API services; vendors can create and edit their listings | Vendor account must be linked to a vendor profile and the API must scope results to the signed-in user |
-| Agreements, milestones, evidence, disputes | Forms/actions call the API; there is no local fallback | Backend must implement authorized agreement, milestone, evidence, event, and report endpoints and enforce valid state transitions |
+| Agreements, milestones, evidence, cancellation, disputes | Forms/actions call the API; cancellation is available before work starts when payment is not pending or complete | Backend must implement authorized agreement, milestone, evidence, event, cancellation, and report endpoints and enforce valid state transitions |
 | Payment checkout | Checkout handoff/status client exists at `/payments/checkout` and `/payments/:id`; only the signed-in buyer can start it in the UI | These endpoints are contracts for the AKOKA backend, not BMONI calls. Backend must validate the buyer/agreement, create provider checkout, verify callbacks/webhooks, and return status. No provider secret belongs in this app. |
 | Transaction-verified reviews | Buyer can submit a 1–5 rating and comment after a completed transaction | Backend must enforce completed-transaction eligibility, one review per transaction, and return `review_submitted` on transaction reads |
 | Admin moderation | Queue and moderation controls call the API | Backend must provide admin-authenticated moderation queue and mutation endpoints and enforce admin permissions |
@@ -65,7 +65,7 @@ GET    /vendors/:id/reviews
 GET    /price-insights               ?category=&itemSpec=
 GET    /price-observations            ?category=
 POST   /price-observations
-POST   /reports
+POST   /reports                      target_type: listing, price_observation, transaction, vendor, or review
 GET    /transactions
 POST   /transactions                 buyer identity comes from authenticated session
 GET    /transactions/:id

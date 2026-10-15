@@ -6,6 +6,7 @@
 	import VendorTrustBadge from '$lib/components/vendors/VendorTrustBadge.svelte';
 	import ListingCard from '$lib/components/listings/ListingCard.svelte';
 	import CreateTransactionModal from '$lib/components/transactions/CreateTransactionModal.svelte';
+	import ReportAction from '$lib/components/reports/ReportAction.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import {
 		IconMapPin,
@@ -107,6 +108,7 @@
 						<span>Start Documented Agreement</span>
 						<IconArrowRight size={15} />
 					</Button>
+					<ReportAction targetType="vendor" targetId={vendor.id} label="Report provider" />
 					<span class="text-[11px] text-slate-400 text-center font-mono">Payment starts after agreement through the backend.</span>
 				</div>
 			</div>
@@ -148,9 +150,7 @@
 					<div class="text-xl font-black text-slate-900 font-mono">
 						{vendor.completed_transactions_count}+
 					</div>
-					<div class="text-[10px] text-slate-400">
-						Completed with zero disputes
-					</div>
+					<div class="text-[10px] text-slate-400">Completed documented agreements</div>
 				</div>
 
 				<!-- Contact / Direct Phone -->
@@ -208,7 +208,7 @@
 				</div>
 				<div class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
 					<IconShieldCheck size={14} />
-					<span>100% Transaction Linked</span>
+					<span>Transaction-linked reviews</span>
 				</div>
 			</div>
 
@@ -229,6 +229,7 @@
 								<IconCheckmark size={11} />
 								<span>Verified completed transaction #{rev.transaction_id}</span>
 							</div>
+							<div class="flex justify-end border-t border-slate-200 pt-1"><ReportAction targetType="review" targetId={rev.id} label="Report review" /></div>
 						</div>
 					{/each}
 				</div>
