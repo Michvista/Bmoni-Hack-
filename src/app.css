@@ -1,3 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+	--font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+	--font-mono: "JetBrains Mono", monospace;
+
+	--color-akoka-50: #f0f9ff;
+	--color-akoka-100: #e0f2fe;
+	--color-akoka-200: #bae6fd;
+	--color-akoka-300: #7dd3fc;
+	--color-akoka-400: #38bdf8;
+	--color-akoka-500: #0284c7;
+	--color-akoka-600: #0369a1;
+	--color-akoka-700: #075985;
+	--color-akoka-800: #0c4a6e;
+	--color-akoka-900: #082f49;
+	--color-akoka-950: #041b2d;
+	--color-lagos-navy: #0b132b;
+	--color-lagos-dark: #1c2541;
+	--color-lagos-slate: #3a506b;
+	--color-lagos-accent: #5bc0be;
+	--color-trust-50: #ecfdf5;
+	--color-trust-100: #d1fae5;
+	--color-trust-500: #10b981;
+	--color-trust-600: #059669;
+	--color-trust-700: #047857;
+	--color-amber-campus-50: #fffbeb;
+	--color-amber-campus-100: #fef3c7;
+	--color-amber-campus-500: #f59e0b;
+	--color-amber-campus-600: #d97706;
+	--color-amber-campus-700: #b45309;
+
+	--shadow-card: 0 1px 3px 0 rgb(15 23 42 / 0.05), 0 1px 2px -1px rgb(15 23 42 / 0.05);
+	--shadow-subtle: 0 4px 6px -1px rgb(15 23 42 / 0.04), 0 2px 4px -2px rgb(15 23 42 / 0.04);
+	--shadow-elevated: 0 10px 25px -5px rgb(15 23 42 / 0.08), 0 8px 10px -6px rgb(15 23 42 / 0.04);
+	--shadow-floating: 0 20px 35px -8px rgb(15 23 42 / 0.12);
+}
+
 @layer base {
 	html {
 		scroll-behavior: smooth;

@@ -39,7 +39,7 @@
 	onMount(() => { refresh().catch((error) => pageError = error instanceof Error ? error.message : 'Could not load agreement.'); });
 	const isBuyer = $derived(Boolean(transaction && $currentUser?.id === transaction.buyer_id && $currentUser?.role === 'student'));
 	const isVendor = $derived(Boolean(transaction && $currentUser?.role === 'vendor' && $currentUser?.id === transaction.vendor?.user_id));
-	const canCancel = $derived(Boolean(transaction && (isBuyer || isVendor) && ['awaiting_agreement', 'agreed'].includes(transaction.status) && !['pending', 'processing', 'succeeded'].includes(transaction.payment?.status ?? 'not_started')));
+	const canCancel = $derived(Boolean(transaction && (isBuyer || isVendor) && transaction.status === 'awaiting_agreement'));
 
 	// Evidence upload modal state
 	let isEvidenceModalOpen = $state(false);
@@ -460,7 +460,7 @@
 
 <Modal isOpen={isCancellationModalOpen} onclose={() => isCancellationModalOpen = false} title="Cancel agreement" subtitle="Cancellation will be recorded in the agreement history." size="md">
 	<form onsubmit={handleCancelAgreement} class="space-y-4">
-		<p class="text-sm text-slate-600">You can cancel before work begins. If payment has already succeeded, contact the Trust Desk so the backend can handle the payment outcome.</p>
+		<p class="text-sm text-slate-600">You can cancel while the agreement is still awaiting acceptance. Once accepted, payment and cancellation outcomes must follow the backend’s transaction policy.</p>
 		<label class="block text-sm font-medium">Reason
 			<textarea bind:value={cancellationDetails} minlength="5" maxlength="500" rows="3" required class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2" placeholder="Briefly explain why this agreement is being cancelled."></textarea>
 		</label>

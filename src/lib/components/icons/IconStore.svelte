@@ -1,18 +1,8 @@
 <script lang="ts">
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import { Store01Icon } from '@hugeicons/core-free-icons';
+
 	let { size = 20, class: className = '', strokeWidth = 1.5 }: { size?: number; class?: string; strokeWidth?: number } = $props();
 </script>
 
-<svg
-	width={size}
-	height={size}
-	viewBox="0 0 24 24"
-	fill="none"
-	stroke="currentColor"
-	stroke-width={strokeWidth}
-	stroke-linecap="round"
-	stroke-linejoin="round"
-	class={className}
->
-	<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-	<polyline points="9 22 9 12 15 12 15 22" />
-</svg>
+<HugeiconsIcon icon={Store01Icon} {size} {strokeWidth} class={className} aria-hidden="true" />

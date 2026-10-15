@@ -8,7 +8,7 @@ AKOKA is a SvelteKit campus commerce frontend for price comparison, vendor disco
 2. A student submits a recent price observation. It enters the moderation workflow; it should affect trusted price summaries only after backend verification.
 3. A student signs in, drafts an agreement with a vendor, and records price, scope, deliverables, turnaround, due date, milestones, and cancellation terms.
 4. Both parties progress the agreement. The buyer can start a payment through the backend only after the agreement is accepted. The backend creates the provider checkout session and reports its verified status to the frontend.
-5. The vendor records work and deliverables. The student confirms completion or raises an issue; either party can cancel before work begins when payment is not pending or complete. Reports and evidence go to authorized moderators.
+5. The vendor records work and deliverables. The student confirms completion or raises an issue; either party can cancel while the agreement is awaiting acceptance. Later cancellation/payment outcomes follow backend policy. Reports and evidence go to authorized moderators.
 6. Vendors manage their offers and agreements in their portal. Moderators review reports, observations, and listings in the admin portal.
 
 Payment status in the UI is informational and comes from the backend. AKOKA does not claim to hold funds or provide escrow. See the [BMONI Nigeria API documentation](https://embedded-docs.bmoni.com/markets/nigeria/); the backend team must decide and implement the provider-side flow and expose an AKOKA API contract.
@@ -23,7 +23,7 @@ Payment status in the UI is informational and comes from the backend. AKOKA does
 | Sign-in, registration, sign-out | Pages and API client calls exist; admin is not self-registerable | Backend must implement cookie/session auth routes and return the documented user shape |
 | Role-aware student, vendor, admin layouts | Routes are separated and client-side role gates are present | This is navigation/UI gating only; backend must enforce permissions on every protected endpoint |
 | Student and vendor portal pages | Pages load account data through API services; vendors can create and edit their listings | Vendor account must be linked to a vendor profile and the API must scope results to the signed-in user |
-| Agreements, milestones, evidence, cancellation, disputes | Forms/actions call the API; cancellation is available before work starts when payment is not pending or complete | Backend must implement authorized agreement, milestone, evidence, event, cancellation, and report endpoints and enforce valid state transitions |
+| Agreements, milestones, evidence, cancellation, disputes | Forms/actions call the API; cancellation is available while awaiting acceptance | Backend must implement authorized agreement, milestone, evidence, event, cancellation, and report endpoints and enforce valid state transitions |
 | Payment checkout | Checkout handoff/status client exists at `/payments/checkout` and `/payments/:id`; only the signed-in buyer can start it in the UI | These endpoints are contracts for the AKOKA backend, not BMONI calls. Backend must validate the buyer/agreement, create provider checkout, verify callbacks/webhooks, and return status. No provider secret belongs in this app. |
 | Transaction-verified reviews | Buyer can submit a 1–5 rating and comment after a completed transaction | Backend must enforce completed-transaction eligibility, one review per transaction, and return `review_submitted` on transaction reads |
 | Admin moderation | Queue and moderation controls call the API | Backend must provide admin-authenticated moderation queue and mutation endpoints and enforce admin permissions |
@@ -80,9 +80,11 @@ GET    /admin/moderation-queue
 PATCH  /admin/moderation-queue/observation/:id
 PATCH  /admin/moderation-queue/report/:id
 
-POST   /payments/checkout             { transaction_id, return_url }
+POST   /payments/checkout             { transaction_id, return_url }; returns { id, status, checkout_url }
 GET    /payments/:paymentId
 ```
+
+After provider checkout, the backend should return the browser to the supplied `return_url` with `payment_id` in the query string. The frontend then calls `GET /payments/:paymentId` and displays only the status returned by the backend. The backend must verify provider callbacks/webhooks and the payment’s transaction ownership before returning `succeeded`.
 
 These are the current frontend endpoint assumptions; confirm and adapt them with the backend developer. Responses are expected as raw JSON objects/arrays, not `{ data: ... }` envelopes. `GET /vendors/:id` returns `{ vendor, listings, reviews }`. The moderation queue returns `{ pendingObservations, reports, pendingTransactions, verifiedObservationCount? }`. Transaction responses include the vendor account owner ID as `vendor.user_id` and buyer-specific `review_submitted` state. The frontend sends evidence as multipart form data. The backend must derive buyer/reporter/actor/vendor identity from the authenticated session rather than trusting IDs supplied by the browser, scope reads, enforce listing ownership and review eligibility, and verify provider webhooks/callbacks before marking payment successful. Never trust a browser redirect as proof of payment.
 
@@ -105,9 +107,11 @@ For local integration, the backend developer can allow the frontend origin `http
 
 ## Project structure
 
+Tailwind CSS v4 is compiled locally by the Vite plugin; the UI uses the free Hugeicons Svelte package with per-icon imports. Price charts are rendered by project components without a separate chart dependency. Plus Jakarta Sans and JetBrains Mono are currently loaded from Google Fonts, with system-font fallbacks.
+
 ```text
 src/lib/api/             typed frontend API clients
-src/lib/components/      reusable auth, navigation, insight, transaction, and UI components
+src/lib/components/      reusable auth, navigation, insight, transaction, report, icon, and UI components
 src/lib/data/            static campus zone reference labels
 src/lib/stores/          authenticated user state and notifications
 src/lib/types/           shared frontend models
